@@ -1,137 +1,85 @@
-const axios = require("axios");
+const axios = require('axios');
 
 exports.handler = async (event, context) => {
-  const ALPHA_KEY = process.env.ALPHA_VANTAGE_KEY;
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
-
-  if (!ALPHA_KEY || !GEMINI_KEY) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Missing API Keys in environment variables." })
-    };
-  }
-
-  try {
-    console.log("DEBUG: Fetching News from Alpha Vantage...");
-
-    const newsUrl = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=CRYPTO:BTC,FOREX:USDINR&apikey=${ALPHA_KEY}`;
-
-    const newsRes = await axios.get(newsUrl);
-
-    // Rate limit handling
-    if (!newsRes.data.feed) {
-      return {
-        statusCode: 429,
-        body: JSON.stringify({ error: "Alpha Vantage rate limit reached." })
-      };
-    }
-
-    // Extract top 5 news
-    const newsFeed = newsRes.data.feed.slice(0, 5).map(n => ({
-      title: n.title,
-      summary: n.summary,
-      source: n.source,
-      url: n.url
-    }));
-
-    console.log("DEBUG: Calling Gemini AI...");
-
-    const aiRequest = {
-      contents: [
-        {
-          parts: [
-            {
-              text: `
-You are an expert financial market analyst.
-
-Analyze the following news and determine:
-
-- headline
-- summary (simple, to the point)
-- affected_assets
-- bias (Buy / Sell / Hold)
-- impact (Bullish / Bearish / Neutral)
-- confidence (Low / Medium / High)
-- url
-
-Return ONLY valid JSON array.
-
-News Data:
-${JSON.stringify(newsFeed)}
-`
-            }
-          ]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              headline: { type: "string" },
-              summary: { type: "string" },
-              affected_assets: {
-                type: "array",
-                items: { type: "string" }
-              },
-              bias: { type: "string" },
-              impact: { type: "string" },
-              confidence: { type: "string" },
-              url: { type: "string" }
-            }
-          }
-        }
-      }
-    };
-
-    const aiRes = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
-      aiRequest,
-      {
-        headers: {
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    let finalData = [];
+    const ALPHA_KEY = process.env.ALPHA_VANTAGE_KEY;
+    const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
     try {
-      finalData = JSON.parse(
-        aiRes.data.candidates[0].content.parts[0].text
-      );
-    } catch (parseError) {
-      console.error("JSON Parse Error:", parseError);
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: "AI response format error." })
-      };
+        console.log("DEBUG: Step 1 - Fetching Market News...");
+        const newsUrl = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=CRYPTO:BTC,FOREX:INR&apikey=${ALPHA_KEY}`;
+        const newsRes = await axios.get(newsUrl);
+        
+        if (!newsRes.data.feed) {
+            console.error("Alpha Vantage Error or Limit:", newsRes.data);
+            return { statusCode: 429, body: JSON.stringify({ error: "Data limit reached. Wait 60s." }) };
+        }
+
+        const newsToAnalyze = newsRes.data.feed.slice(0, 5).map(n => ({
+            title: n.title,
+            summary: n.summary,
+            url: n.url
+        }));
+
+        console.log("DEBUG: Step 2 - Analyzing with Gemini 2.5 Flash...");
+        
+        // Updated 2026 Production Endpoint and Model ID
+        const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
+
+        const aiRequest = {
+            contents: [{
+                parts: [{
+                    text: `Analyze these 5 financial news items for profit opportunities. 
+                    Data: ${JSON.stringify(newsToAnalyze)}.
+                    Focus on Indian and Global market impact.`
+                }]
+            }],
+            generationConfig: {
+                responseMimeType: "application/json",
+                // This Schema prevents "JSON Parse" errors by forcing the AI to follow your layout
+                responseSchema: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            headline: { type: "STRING" },
+                            summary: { type: "STRING" },
+                            affected_assets: { type: "ARRAY", items: { type: "STRING" } },
+                            bias: { type: "STRING" },
+                            impact: { type: "STRING" },
+                            confidence: { type: "STRING" },
+                            url: { type: "STRING" }
+                        },
+                        required: ["headline", "summary", "affected_assets", "bias", "impact", "confidence", "url"]
+                    }
+                }
+            }
+        };
+
+        const aiRes = await axios.post(GEMINI_URL, aiRequest);
+
+        // Robust parsing of the candidate text
+        const rawAiText = aiRes.data.candidates[0].content.parts[0].text;
+        const finalData = JSON.parse(rawAiText);
+
+        console.log("DEBUG: Step 3 - Sending result to frontend.");
+        return {
+            statusCode: 200,
+            headers: { 
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*" 
+            },
+            body: JSON.stringify(finalData)
+        };
+
+    } catch (error) {
+        console.error("DEBUG: CRASH ->", error.response?.data || error.message);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ 
+                error: "AI Processing Failed", 
+                details: error.message,
+                apiResponse: error.response?.data 
+            })
+        };
     }
-
-    return {
-      statusCode: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      },
-      body: JSON.stringify({
-        timestamp: new Date().toISOString(),
-        data: finalData
-      })
-    };
-
-  } catch (error) {
-    console.error("DEBUG ERROR:", error.response?.data || error.message);
-
-    return {
-      statusCode: 500,
-      headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({
-        error: error.response?.data || error.message
-      })
-    };
-  }
 };
