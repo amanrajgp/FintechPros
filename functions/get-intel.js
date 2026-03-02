@@ -27,7 +27,7 @@ exports.handler = async () => {
 
         // NEW 2026 ENDPOINT
         const aiRes = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-preview:generateContent?key=${GEMINI_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_KEY}`,
             aiRequest
         );
 
@@ -43,3 +43,4 @@ exports.handler = async () => {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };
+
