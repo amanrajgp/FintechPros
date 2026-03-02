@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinIntel AI | Market Terminal</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+    <header>
+        <div class="logo-area">
+            <h1>⚡ FinIntel <span class="badge-pro">AI</span></h1>
+            <p id="status-text">Live Market Intelligence</p>
+        </div>
+        <div class="controls">
+            <span id="last-update">Syncing...</span>
+            <button id="refresh-btn">Fetch Alpha</button>
+        </div>
+    </header>
+
+    <section class="filter-bar">
+        <select id="asset-filter">
+            <option value="ALL">All Assets</option>
+            <option value="STOCKS">Stocks (IN/US)</option>
+            <option value="CRYPTO">Crypto</option>
+            <option value="FOREX">Forex/Commodities</option>
+        </select>
+        <div class="disclaimer">⚠️ Not Financial Advice. AI may hallucinate.</div>
+    </section>
+
+    <main id="news-grid">
+        <div class="skeleton-loader">Analyzing global markets...</div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
